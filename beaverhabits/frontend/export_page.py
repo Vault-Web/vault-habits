@@ -63,7 +63,7 @@ async def export_page(habit_list: HabitList, user: User):
     ui.colors(primary=const.DARK_COLOR)
 
     with layout(title="Export"):
-        with ui.column().classes("w-80"):
+        with ui.column().classes("w-full max-w-[420px]"):
             with compat_card().classes("w-full"):
                 export_panel(habit_list, user)
             with compat_card().classes("w-full"):

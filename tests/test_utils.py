@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from beaverhabits.utils import format_date_difference
+from beaverhabits.utils import format_date_difference, week_days
 
 
 def s2d(date_str):
@@ -26,3 +26,15 @@ def test_date_diff_format():
     assert format_date_difference(s2d(start), s2d("2025-05-27")) == ""
     assert format_date_difference(s2d(start), s2d("2025-05-28")) == "1 days"
     assert format_date_difference(s2d(start), s2d("2025-05-29")) == "2 days"
+
+
+def test_week_days_cover_current_monday_to_sunday():
+    assert week_days(s2d("2026-05-22")) == [
+        s2d("2026-05-18"),
+        s2d("2026-05-19"),
+        s2d("2026-05-20"),
+        s2d("2026-05-21"),
+        s2d("2026-05-22"),
+        s2d("2026-05-23"),
+        s2d("2026-05-24"),
+    ]

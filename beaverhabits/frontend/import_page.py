@@ -115,7 +115,7 @@ def import_ui_page(user: User):
             ui.notify(str(error), color="negative", position="top")
 
     with layout(title="Import"):
-        with ui.column().classes("gap-2"):
+        with ui.column().classes("w-full max-w-[520px] gap-2"):
             # Upload: https://nicegui.io/documentation/upload
             upload = ui.upload(on_upload=handle_upload, max_files=1)
             upload.props('accept=.json,.csv color="grey-10" flat')

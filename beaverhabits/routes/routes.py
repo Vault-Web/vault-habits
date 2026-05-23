@@ -16,6 +16,7 @@ from beaverhabits.app.dependencies import (
     current_admin_user,
     get_reset_user,
 )
+from beaverhabits.app.vault_web_auth import user_from_vault_web_token
 from beaverhabits.configs import settings
 from beaverhabits.frontend import paddle_page
 from beaverhabits.frontend.add_page import add_page_ui
@@ -36,7 +37,7 @@ from beaverhabits.frontend.index_page import (
 )
 from beaverhabits.frontend.layout import custom_headers, redirect
 from beaverhabits.frontend.chip_sets_page import chip_sets_page
-from beaverhabits.frontend.order_page import order_page_ui
+from beaverhabits.frontend.ranking_page import ranking_page_ui
 from beaverhabits.frontend.settings_page import settings_page
 from beaverhabits.frontend.stats_page import stats_page_ui
 from beaverhabits.frontend.streaks import heatmap_page
@@ -45,16 +46,21 @@ from beaverhabits.logger import logger
 from beaverhabits.routes.google_one_tap import google_one_tap_login
 from beaverhabits.storage import image_storage
 from beaverhabits.storage.meta import GUI_ROOT_PATH
-from beaverhabits.utils import dummy_days, fetch_user_dark_mode, get_user_today_date
+from beaverhabits.utils import (
+    current_week_days,
+    dummy_days,
+    fetch_user_dark_mode,
+    get_user_today_date,
+)
 
 UNRESTRICTED_PAGE_ROUTES = ("/login", "/register")
 
 
 @ui.page("/demo")
 async def demo_index_page() -> None:
-    days = await dummy_days(settings.INDEX_HABIT_DATE_COLUMNS)
+    days = await current_week_days()
     habit_list = views.get_or_create_session_habit_list(days)
-    index_page_ui(days, habit_list)
+    index_page_ui(days, habit_list, today=await get_user_today_date())
     refresh_habit_list_when_today_changes(days, habit_list)
 
     # Google One Tap Login
@@ -73,14 +79,7 @@ async def demo_stats_page() -> None:
     days = await dummy_days(settings.INDEX_HABIT_DATE_COLUMNS)
     habit_list = views.get_or_create_session_habit_list(days)
     today = await get_user_today_date()
-    stats_page_ui(today, habit_list)
-
-
-@ui.page("/demo/order")
-async def demo_order_page() -> None:
-    days = await dummy_days(settings.INDEX_HABIT_DATE_COLUMNS)
-    habit_list = views.get_or_create_session_habit_list(days)
-    order_page_ui(habit_list)
+    stats_page_ui(today, habit_list, registered_on=min(days))
 
 
 @ui.page("/demo/habits/{habit_id}")
@@ -123,9 +122,9 @@ async def demo_export() -> None:
 async def index_page(
     user: User = Depends(current_active_user),
 ) -> None:
-    days = await dummy_days(settings.INDEX_HABIT_DATE_COLUMNS)
+    days = await current_week_days()
     habit_list = await views.get_user_habit_list(user)
-    index_page_ui(days, habit_list)
+    index_page_ui(days, habit_list, today=await get_user_today_date())
     refresh_habit_list_when_today_changes(days, habit_list)
 
     await views.set_user_cookies(user)
@@ -141,13 +140,13 @@ async def add_page(user: User = Depends(current_active_user)) -> None:
 async def stats_page(user: User = Depends(current_active_user)) -> None:
     habit_list = await views.get_user_habit_list(user)
     today = await get_user_today_date()
-    stats_page_ui(today, habit_list)
+    registered_on = user.created_at.date() if user.created_at else today
+    stats_page_ui(today, habit_list, registered_on)
 
 
-@ui.page("/gui/order")
-async def order_page(user: User = Depends(current_active_user)) -> None:
-    habit_list = await views.get_user_habit_list(user)
-    order_page_ui(habit_list)
+@ui.page("/gui/ranking")
+async def ranking_page(user: User = Depends(current_active_user)) -> None:
+    ranking_page_ui(await views.get_vault_web_ranking(user))
 
 
 @ui.page("/gui/habits/{habit_id}")
@@ -201,6 +200,8 @@ async def gui_chip_sets(user: User = Depends(current_active_user)) -> None:
 async def login_page(client: Client) -> Optional[RedirectResponse]:
     if await views.is_gui_authenticated():
         return RedirectResponse(GUI_ROOT_PATH)
+    if settings.has_vault_web_login():
+        return RedirectResponse(settings.VAULT_WEB_LOGIN_URL)
 
     custom_headers()
 
@@ -241,10 +242,58 @@ async def login_page(client: Client) -> Optional[RedirectResponse]:
                 auth_redirect("Create account", "/register")
 
 
+@ui.page("/vault-web-login")
+async def vault_web_login_page(client: Client) -> Optional[RedirectResponse]:
+    if await views.is_gui_authenticated():
+        return RedirectResponse(GUI_ROOT_PATH)
+
+    custom_headers()
+    ui.label("Signing in with Vault Web...")
+
+    try:
+        await client.connected(timeout=3)
+        token = await ui.run_javascript(
+            """
+            const fragment = new URLSearchParams(window.location.hash.slice(1));
+            const token = fragment.get('vaultWebToken') || '';
+            history.replaceState(null, '', window.location.pathname + window.location.search);
+            return token;
+            """,
+            timeout=3,
+        )
+    except TimeoutError:
+        logger.warning("Vault Web login client did not connect in time")
+        ui.notify("Vault Web login timed out.", color="negative")
+        return None
+
+    if not isinstance(token, str) or not token:
+        if settings.has_vault_web_login():
+            ui.navigate.to(settings.VAULT_WEB_LOGIN_URL)
+            return None
+        ui.notify("Vault Web login token missing.", color="negative")
+        return None
+
+    try:
+        user = await user_from_vault_web_token(token)
+        await views.login_user(user)
+    except Exception as exc:
+        logger.warning(f"Vault Web login failed: {exc}")
+        if settings.has_vault_web_login():
+            ui.navigate.to(settings.VAULT_WEB_LOGIN_URL)
+            return None
+        ui.notify(str(exc), color="negative")
+        return None
+
+    ui.navigate.to(GUI_ROOT_PATH)
+    return None
+
+
 @ui.page("/register")
 async def register_page():
     if await views.is_gui_authenticated():
         return RedirectResponse(GUI_ROOT_PATH)
+    if settings.has_vault_web_login():
+        return RedirectResponse(settings.VAULT_WEB_LOGIN_URL)
 
     custom_headers()
 

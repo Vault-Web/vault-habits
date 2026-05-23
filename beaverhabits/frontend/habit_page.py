@@ -57,7 +57,7 @@ def card(link: str | None = None, padding: float = 3, width: int | None = 350):
 def habit_page(today: datetime.date, habit: Habit):
     target = get_habit_heatmap_path(habit)
 
-    with ui.column().classes("gap-y-2"):
+    with ui.column().classes("w-full items-center gap-y-2"):
         with card():
             HabitDateInput(
                 today, habit, refreshs=[habit_heat_map.refresh, habit_history.refresh]
@@ -79,9 +79,7 @@ def habit_page(today: datetime.date, habit: Habit):
             card_title("Notes", "#").tooltip("Press and hold to add notes/descriptions")
             habit_notes(habit)
 
-        if habit.period and (
-            habit.period != EVERY_DAY or settings.HABIT_SHOW_EVERY_DAY_STREAKS
-        ):
+        if habit.period:
             with card():
                 card_title("Best Streaks", target)
                 habit_streak(today, habit)

@@ -6,6 +6,12 @@ cd "$(dirname "$0")"
 # create directory for user data
 mkdir -p .user
 
+if [ -f ".env" ]; then
+    set -a
+    . ./.env
+    set +a
+fi
+
 if [ "$1" = "prd" ]; then
     echo "Starting Uvicorn server in production mode..."
     export ENV=production

@@ -18,10 +18,12 @@ from beaverhabits.frontend.components import (
     tag_filter_component,
 )
 from beaverhabits.frontend.layout import layout
+from beaverhabits.logger import logger
 from beaverhabits.storage.storage import (
     Habit,
     HabitList,
     HabitListBuilder,
+    HabitOrder,
     HabitStatus,
 )
 
@@ -64,13 +66,24 @@ def day_headers(days: list[datetime.date]):
         yield "#"
 
 
-def habit_row(habit: Habit, tag: str, days: list[datetime.date]):
-    name = habit_name_menu(habit, index_page_ui.refresh)
-    name.classes(LEFT_CLASSES)
-    name.props(f'role="heading" aria-level="2" aria-label="{habit.name}"')
+class HabitWeekCard(ui.card):
+    def __init__(self, habit: Habit) -> None:
+        super().__init__()
+        self.habit = habit
+        self.props("draggable")
+        self.classes(
+            f"{COMPAT_CLASSES} vault-index-card vault-week-item theme-card-shadow"
+        )
 
-    today = max(days)
-    status_map = get_habit_date_completion(habit, min(days), today)
+
+def habit_row(habit: Habit, days: list[datetime.date], today: datetime.date):
+    with ui.row().classes(f"{LEFT_CLASSES} no-wrap items-center gap-1"):
+        ui.icon("drag_indicator").classes("vault-week-drag-handle")
+        name = habit_name_menu(habit, index_page_ui.refresh)
+        name.classes("truncate min-w-0")
+        name.props(f'role="heading" aria-level="2" aria-label="{habit.name}"')
+
+    status_map = get_habit_date_completion(habit, min(days), max(days))
     for day in days:
         status = status_map.get(day, [])
         checkbox = HabitCheckBox(
@@ -86,36 +99,91 @@ def habit_row(habit: Habit, tag: str, days: list[datetime.date]):
         IndexTotalBadge(today, habit).classes(RIGHT_CLASSES)
 
 
+async def week_item_drop(e, habit_list: HabitList):
+    dragged = ui.context.client.elements[int(e.args["id"][1:])]
+    assert dragged.parent_slot is not None
+    dragged.move(target_index=e.args["new_index"])
+
+    order = []
+    for item in dragged.parent_slot:
+        if not isinstance(item, HabitWeekCard):
+            continue
+        habit_id = str(item.habit.id)
+        if habit_id not in order:
+            order.append(habit_id)
+
+    habit_list.order = order
+    habit_list.order_by = HabitOrder.MANUALLY
+    logger.info(f"Weekly habit order: {order}")
+
+
+def enable_week_sorting(habit_list: HabitList):
+    ui.add_body_html("""
+        <script type="module">
+        import '/statics/libs/sortable.min.js';
+        const initializeWeekSorting = () => {
+            document.querySelectorAll('.vault-week-sortable').forEach((list) => {
+                if (list.dataset.weekSortable === 'true') return;
+                list.dataset.weekSortable = 'true';
+                Sortable.create(list, {
+                    animation: 150,
+                    draggable: '.vault-week-item',
+                    handle: '.vault-week-drag-handle',
+                    ghostClass: 'opacity-50',
+                    onEnd: (evt) => emitEvent('week_item_drop', {
+                        id: evt.item.id,
+                        new_index: evt.newIndex,
+                    }),
+                });
+            });
+        };
+        document.addEventListener('DOMContentLoaded', initializeWeekSorting);
+        new MutationObserver(initializeWeekSorting).observe(document.body, {
+            childList: true,
+            subtree: true,
+        });
+        </script>
+        """)
+    ui.on("week_item_drop", lambda e: week_item_drop(e, habit_list))
+
+
 @ui.refreshable
-def habit_list_ui(days: list[datetime.date], active_habits: List[Habit]):
+def habit_list_ui(
+    days: list[datetime.date], active_habits: List[Habit], today: datetime.date
+):
     if settings.ENABLE_TAG_FILTERS:
         active_habits = filter_habits_with_tags(active_habits)
 
     # Total cloumn for each row
     columns = NAME_COLS + len(days) * DATE_COLS + COUNT_BADGE_COLS
 
-    with ui.column().classes("gap-1.5"):
+    with ui.column().classes("vault-index-list"):
         # Date Headers
-        with grid(columns, 2).classes(COMPAT_CLASSES).style(STICKY_STYLES) as g:
+        with (
+            grid(columns, 2)
+            .classes(f"{COMPAT_CLASSES} vault-index-header")
+            .style(STICKY_STYLES) as g
+        ):
             g.props('aria-hidden="true"').classes("theme-header-date")
             for it in (week_headers(days), day_headers(days)):
                 ui.label("").classes(LEFT_CLASSES)
                 for label in it:
                     ui.label(label).classes(RIGHT_CLASSES)
 
-        # Habit Rows
-        groups = habits_by_tags(active_habits)
+        with ui.column().classes("vault-week-sortable w-full gap-2"):
+            # Habit Rows
+            groups = habits_by_tags(active_habits)
 
-        for tag, habit_list in groups.items():
-            if not habit_list:
-                continue
+            for tag, habit_list in groups.items():
+                if not habit_list:
+                    continue
 
-            for habit in habit_list:
-                with ui.card().classes(COMPAT_CLASSES).classes("theme-card-shadow"):
-                    with grid(columns, 1):
-                        habit_row(habit, tag, days)
+                for habit in habit_list:
+                    with HabitWeekCard(habit):
+                        with grid(columns, 1):
+                            habit_row(habit, days, today)
 
-            ui.space()
+                ui.space()
 
 
 def get_active_habits(habits: HabitList) -> List[Habit]:
@@ -125,25 +193,28 @@ def get_active_habits(habits: HabitList) -> List[Habit]:
 def refresh_habit_list_when_today_changes(
     days: list[datetime.date], habits: HabitList
 ) -> None:
-    rendered_today = max(days)
+    rendered_days = days
 
     async def refresh_if_needed() -> None:
-        nonlocal rendered_today
+        nonlocal rendered_days
         today = await utils.get_user_today_date()
-        if today == rendered_today:
+        new_days = await utils.current_week_days()
+        if new_days == rendered_days:
             return
-        rendered_today = today
-        new_days = await utils.dummy_days(settings.INDEX_HABIT_DATE_COLUMNS)
+        rendered_days = new_days
         if settings.INDEX_HABIT_DATE_REVERSE:
             new_days = list(reversed(new_days))
-        habit_list_ui.refresh(new_days, get_active_habits(habits))
+        habit_list_ui.refresh(new_days, get_active_habits(habits), today)
 
     ui.timer(60, refresh_if_needed, immediate=False)
 
 
 @ui.refreshable
-def index_page_ui(days: list[datetime.date], habits: HabitList):
+def index_page_ui(
+    days: list[datetime.date], habits: HabitList, today: datetime.date | None = None
+):
     active_habits = get_active_habits(habits)
+    today = today or max(days)
     if settings.INDEX_HABIT_DATE_REVERSE:
         days = list(reversed(days))
 
@@ -154,7 +225,8 @@ def index_page_ui(days: list[datetime.date], habits: HabitList):
         if not active_habits:
             ui.label("List is empty.").classes("mx-auto w-80")
             return
-        habit_list_ui(days, active_habits)
+        habit_list_ui(days, active_habits, today)
+        enable_week_sorting(habits)
 
     # placeholder to preload js cache (daily notes)
     textarea.Textarea("").classes("hidden").props('aria-hidden="true"')

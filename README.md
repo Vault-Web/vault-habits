@@ -60,7 +60,7 @@ services:
       # https://github.com/daya0576/beaverhabits/wiki/Environment-variables
       - HABITS_STORAGE=USER_DISK # DATABASE stores in a single SQLite database named habits.db. USER_DISK option saves in a local json file.
       - TRUSTED_LOCAL_EMAIL=your@email.com # Skip authentication
-      - INDEX_HABIT_DATE_COLUMNS=5 # Customize the date columns for the index page.
+      - INDEX_HABIT_DATE_COLUMNS=7 # Show a full week on the index page.
       - ENABLE_IOS_STANDALONE=true
     volumes:
       - ./beaver/:/app/.user/ # Change directory to match your docker file scheme.
@@ -85,6 +85,39 @@ uv venv && uv sync
 # Start the server
 ./start.sh dev
 ```
+
+### Vault Web login handoff
+
+BeaverHabits can accept a Vault Web access token from a configured Vault Web
+external link. Habits still owns its habit tables and local user records; the
+Vault Web JWT proves which Vault Web user should be mapped to that local record.
+
+Set `VAULT_WEB_JWT_SECRET` to the same access-token secret as Vault Web before
+starting Habits. `VAULT_WEB_LOGIN_URL` makes unauthenticated Habits GUI visits
+return to Vault Web. `VAULT_WEB_AUTH_ONLY` removes BeaverHabits local auth
+endpoints for this mode:
+
+```sh
+export VAULT_WEB_JWT_SECRET=replace_with_vault_web_jwt_secret
+export VAULT_WEB_LOGIN_URL='http://localhost:4200/login?externalLink=Habits'
+export VAULT_WEB_AUTH_ONLY=true
+uv run ./start.sh dev
+```
+
+The Vault Web external link should point to `/vault-web-login` and opt in to
+`forwardVaultWebToken`:
+
+```js
+{
+  name: "Habits",
+  url: "http://localhost:9001/vault-web-login",
+  forwardVaultWebToken: true,
+}
+```
+
+Habits derives an internal email-like identifier from the Vault Web `userId`.
+Set `VAULT_WEB_USER_EMAIL_DOMAIN` only if the default `vaultweb.app` mapping
+domain does not fit your installation.
 
 # Features
 

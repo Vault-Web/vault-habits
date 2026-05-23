@@ -163,6 +163,16 @@ async def dummy_days(days: int) -> list[datetime.date]:
     return [today - datetime.timedelta(days=i) for i in reversed(range(days))]
 
 
+def week_days(today: datetime.date) -> list[datetime.date]:
+    days_from_week_start = (today.weekday() - settings.FIRST_DAY_OF_WEEK) % 7
+    start = today - datetime.timedelta(days=days_from_week_start)
+    return [start + datetime.timedelta(days=offset) for offset in range(7)]
+
+
+async def current_week_days() -> list[datetime.date]:
+    return week_days(await get_user_today_date())
+
+
 def generate_short_hash(name: str) -> str:
     h = hashlib.new("sha1")
     h.update(name.encode())
