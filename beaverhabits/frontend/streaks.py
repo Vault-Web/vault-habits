@@ -18,7 +18,7 @@ WEEKS_TO_DISPLAY = 53
 
 def compat_card():
     card = ui.card().classes("p-3 gap-0 no-shadow items-center")
-    card.classes("w-[1106px] break-inside-avoid h-fit")
+    card.classes("vault-scroll-surface max-w-[1106px] break-inside-avoid h-fit")
     return card
 
 

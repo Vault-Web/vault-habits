@@ -65,6 +65,10 @@ class Settings(BaseSettings):
     # Auth
     TRUSTED_EMAIL_HEADER: str = ""
     TRUSTED_LOCAL_EMAIL: str = ""
+    VAULT_WEB_JWT_SECRET: str = ""
+    VAULT_WEB_USER_EMAIL_DOMAIN: str = "vaultweb.app"
+    VAULT_WEB_LOGIN_URL: str = ""
+    VAULT_WEB_AUTH_ONLY: bool = False
     RESET_PASSWORD_TOKEN_SECRET: str = ""
     RESET_PASSWORD_TOKEN_LIFETIME_SECONDS: int = 60 * 60  # 1 hour
     REQUIRE_ADMIN_FOR_REGISTRATION: bool = False  # Require admin auth to register users
@@ -85,7 +89,7 @@ class Settings(BaseSettings):
     INDEX_SHOW_HABIT_COUNT: bool = False
     INDEX_SHOW_HABIT_STREAK: bool = False
     INDEX_HABIT_NAME_COLUMNS: int = 5
-    INDEX_HABIT_DATE_COLUMNS: int = 5
+    INDEX_HABIT_DATE_COLUMNS: int = 7
     INDEX_HABIT_DATE_REVERSE: bool = False
 
     HABIT_SHOW_EVERY_DAY_STREAKS: bool = False
@@ -111,6 +115,9 @@ class Settings(BaseSettings):
 
     def is_trusted_env(self):
         return self.TRUSTED_LOCAL_EMAIL
+
+    def has_vault_web_login(self):
+        return bool(self.VAULT_WEB_JWT_SECRET and self.VAULT_WEB_LOGIN_URL)
 
     @field_validator("TIME_ZONE")
     @classmethod

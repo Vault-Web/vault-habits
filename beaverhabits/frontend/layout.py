@@ -1,14 +1,11 @@
-import time
 from contextlib import contextmanager
 
-from nicegui import background_tasks, ui
+from nicegui import ui
 
 from beaverhabits import views
-from beaverhabits.app.auth import user_logout
 from beaverhabits.configs import settings
-from beaverhabits.frontend import css, icons
+from beaverhabits.frontend import css
 from beaverhabits.frontend.components import (
-    compat_card,
     habit_edit_dialog,
     menu_header,
     menu_icon_button,
@@ -17,8 +14,7 @@ from beaverhabits.frontend.components import (
     separator,
 )
 from beaverhabits.frontend.javascript import PREVENT_CONTEXT_MENU
-from beaverhabits.frontend.menu import add_menu, sort_menu, stats_date_pick_menu
-from beaverhabits.plan import plan
+from beaverhabits.frontend.menu import sort_menu
 from beaverhabits.storage.meta import (
     get_root_path,
     is_page_demo,
@@ -26,13 +22,11 @@ from beaverhabits.storage.meta import (
     page_title,
 )
 from beaverhabits.storage.storage import Habit, HabitList
-from beaverhabits.version import IDENTITY
 
 
 def pwa_headers():
     # Extend background to iOS notch
-    ui.add_head_html(
-        """
+    ui.add_head_html("""
         <link rel="apple-touch-icon" href="/statics/images/apple-touch-icon-v4.png">
         
         <meta name="apple-mobile-web-app-title" content="Beaver">
@@ -40,8 +34,7 @@ def pwa_headers():
         
         <meta name="theme-color" content="#F9F9F9" media="(prefers-color-scheme: light)" />
         <meta name="theme-color" content="#121212" media="(prefers-color-scheme: dark)" />
-        """
-    )
+        """)
 
     # Experimental PWA
     if settings.ENABLE_IOS_STANDALONE:
@@ -55,8 +48,7 @@ def custom_headers():
     page_url = "https://beaverhabits.com" + page_path()
 
     # SEO meta tags
-    ui.add_head_html(
-        f"""
+    ui.add_head_html(f"""
         <!-- Basic Meta Tags -->
         <meta name="description" content="A minimal habit tracking app without Goals. Track your daily habits with a simple, privacy-focused interface.">
         <meta name="keywords" content="habit tracker, habit tracking, self-hosted, productivity, daily habits, habit building, open source">
@@ -101,8 +93,7 @@ def custom_headers():
             }}
         }}
         </script>
-        """
-    )
+        """)
 
     # Long-press event
     ui.add_head_html('<script src="/statics/libs/long-press-event.min.js"></script>')
@@ -116,6 +107,7 @@ def custom_headers():
     # Prevent white flash on page load
     ui.add_css(css.WHITE_FLASH_PREVENT)
     ui.add_css(css.TEXTAREA_CSS)
+    ui.add_css(css.APP_SHELL_CSS)
 
     # prevent context menu
     ui.add_body_html(f"<script>{PREVENT_CONTEXT_MENU}</script>")
@@ -124,65 +116,22 @@ def custom_headers():
     views.apply_theme_style()
 
 
-def show_help_dialog():
-    with ui.context.client.content:
-        with ui.dialog() as dialog:
-            with compat_card().classes("w-[360px]"):
-                title = IDENTITY.replace("/", " ")
-                title = title.split("@")[0] if "@" in title else title
-                ui.label(title).classes("text-lg font-bold")
-                ui.separator()
-
-                items = {
-                    "Documentation": "https://github.com/daya0576/beaverhabits/wiki",
-                    "Supporter": "https://www.beaverhabits.com/pricing",
-                    "YouTube": "https://www.youtube.com/@beaverhabits",
-                    "Bugs & Feature Requests": "https://github.com/daya0576/beaverhabits/issues",
-                }
-
-                with ui.grid(columns=2).classes("gap-2"):
-                    for name, link in items.items():
-                        ui.link(name, link, new_tab=True)
-
-        dialog.props('backdrop-filter="blur(4px)"')
-        dialog.open()
-
-
 @ui.refreshable
 def menu_component():
     """Dropdown menu for the top-right corner of the page."""
     with ui.menu().props('role="menu" transition-duration="50"'):
-        add_menu()
+        menu_icon_item("Habits", lambda: redirect(""))
         separator()
-
-        with menu_icon_item("Tools", auto_close=False).classes("pr-1"):
-            with ui.item_section().props("side").classes("pl-[1px]"):
-                ui.icon(icons.CHEVRON_RIGHT)
-            with ui.menu().props('anchor="top end" self="top start" auto-close'):
-                # Stats for all habtis
-                menu_icon_item("Reorder", lambda: redirect("order"))
-                separator()
-
-                # Export & import
-                menu_icon_item("Export", lambda: redirect("export"))
-                separator()
-                imp = menu_icon_item("Import", lambda: redirect("import"))
-                if is_page_demo():
-                    imp.classes("disabled")
-                separator()
-
-                # Stats for all habtis
-                menu_icon_item("Stats", lambda: redirect("stats"))
-                separator()
-
+        menu_icon_item("Stats", lambda: redirect("stats"))
+        if not is_page_demo():
+            separator()
+            menu_icon_item("Ranking", lambda: redirect("ranking"))
         separator()
-
-        # About page
-        menu_icon_item("Help", show_help_dialog)
+        menu_icon_item("Export", lambda: redirect("export"))
         separator()
-
-        # Login & Logout
-        menu_icon_item("Logout", lambda: user_logout() and ui.navigate.to("/login"))
+        imp = menu_icon_item("Import", lambda: redirect("import"))
+        if is_page_demo():
+            imp.classes("disabled")
 
 
 @contextmanager
@@ -190,19 +139,26 @@ def layout(
     title: str | None = None,
     habit: Habit | None = None,
     habit_list: HabitList | None = None,
-    page_ui: ui.refreshable | None = None,
 ):
     # Standard headers
     custom_headers()
     pwa_headers()
 
-    # Center the content on small screens
-    with ui.column().classes("mx-auto mx-0"):
+    with ui.column().classes("vault-habits-shell"):
 
         # Layout wrapper
-        with ui.row().classes("w-full gap-x-1"):
+        with ui.row().classes("vault-toolbar w-full gap-x-1 no-wrap"):
             title, target = title or page_title(), get_root_path()
             menu_header(title, target=target)
+
+            current_path = page_path().rstrip("/")
+            root_path = get_root_path().rstrip("/")
+            if habit_list and current_path in ("", root_path):
+                add_btn = menu_icon_button(
+                    "sym_o_add", lambda: redirect("add"), tooltip="Add habit"
+                )
+                add_btn.classes("vault-add-button")
+
             ui.space()
 
             if habit:
@@ -212,10 +168,6 @@ def layout(
             elif habit_list and "add" in page_path():
                 with menu_icon_button("sym_o_swap_vert", tooltip="Sort"):
                     sort_menu(habit_list)
-            elif "stats" in page_path() and page_ui:
-                with menu_icon_button("sym_o_expand_content", tooltip="Date"):
-                    stats_date_pick_menu()
-
             with menu_icon_button("sym_o_menu"):
                 menu_component()
 

@@ -336,6 +336,10 @@ class HabitCheckBox(ui.checkbox):
             self.props('aria-label="Today"')
         elif days == 1:
             self.props('aria-label="Yesterday"')
+        elif days == -1:
+            self.props('aria-label="Tomorrow"')
+        elif days < 0:
+            self.props(f'aria-label="In {-days} days"')
         else:
             self.props(f'aria-label="{days} days ago"')
 
@@ -741,11 +745,15 @@ def habit_heat_map(
     calendar: CalendarHeatmap,
     readonly: bool = False,
     refresh: Callable | None = None,
+    start_date: datetime.date | None = None,
 ):
     today = calendar.today
 
     # Habit completions
-    status_map = get_habit_date_completion(habit, calendar.first_day, today)
+    status_start = (
+        max(calendar.first_day, start_date) if start_date else calendar.first_day
+    )
+    status_map = get_habit_date_completion(habit, status_start, today)
 
     with ui.column().classes("gap-0"):
         # Headers
@@ -761,7 +769,9 @@ def habit_heat_map(
         for i, weekday_days in enumerate(calendar.data):
             with ui.row(wrap=False).classes("gap-0"):
                 for day in weekday_days:
-                    if day <= calendar.today:
+                    if start_date and day < start_date:
+                        ui.label().style("width: 20px; height: 20px;")
+                    elif day <= calendar.today:
                         status = status_map.get(day, [])
                         CalendarCheckBox(habit, day, status, readonly, refresh=refresh)
                     else:
@@ -795,8 +805,12 @@ def habit_history(today: datetime.date, habit: Habit, total_months: int = 13):
         )
         data.append(count)
 
+    dark = get_user_dark_mode()
+    split_line_color = "#303030" if dark else "#e0e0e0"
+
     echart = ui.echart(
         {
+            "tooltip": {"trigger": "axis"},
             "xAxis": {
                 "data": months,
             },
@@ -806,7 +820,7 @@ def habit_history(today: datetime.date, habit: Habit, total_months: int = 13):
                 "splitLine": {
                     "show": True,
                     "lineStyle": {
-                        "color": "#303030",
+                        "color": split_line_color,
                     },
                 },
             },
@@ -974,8 +988,12 @@ def habit_streak(today: datetime.date, habit: Habit):
     # draw the graph
     months = [x.strftime("%d/%m") for x in months]
 
+    dark = get_user_dark_mode()
+    split_line_color = "#303030" if dark else "#e0e0e0"
+
     echart = ui.echart(
         {
+            "tooltip": {"trigger": "axis"},
             "xAxis": {
                 "data": months,
             },
@@ -985,7 +1003,7 @@ def habit_streak(today: datetime.date, habit: Habit):
                 "splitLine": {
                     "show": True,
                     "lineStyle": {
-                        "color": "#303030",
+                        "color": split_line_color,
                     },
                 },
             },
@@ -993,7 +1011,10 @@ def habit_streak(today: datetime.date, habit: Habit):
                 {
                     "type": "bar",
                     "data": data,
-                    "itemStyle": {"color": icons.PRIMARY_COLOR},
+                    "itemStyle": {
+                        "color": icons.PRIMARY_COLOR,
+                        "borderRadius": [3, 3, 0, 0],
+                    },
                     "animation": False,
                 }
             ],
@@ -1057,8 +1078,7 @@ def tag_filter_component(active_habits: list[Habit], refresh: Callable):
         TagChip("Others", refresh=refresh)
 
         row.classes("tag-filter")
-        ui.run_javascript(
-            """
+        ui.run_javascript("""
             const element = document.querySelector(".tag-filter");
         
             // scroll event
@@ -1085,8 +1105,7 @@ def tag_filter_component(active_habits: list[Habit], refresh: Callable):
                     element.classList.remove("hidden");
                 }
             }, { passive: true  });
-            """
-        )
+            """)
 
 
 def filter_habits_with_tags(active_habits: list[Habit]) -> list[Habit]:
@@ -1316,7 +1335,9 @@ def habit_edit_dialog(habit: Habit) -> ui.dialog:
                 ).classes("flex-grow")
                 ui.icon("help_outline", size="xs").classes(
                     "cursor-pointer opacity-30 hover:opacity-80"
-                ).style("margin-top: 20px").tooltip("Edit default completion status").on(
+                ).style("margin-top: 20px").tooltip(
+                    "Edit default completion status"
+                ).on(
                     "click", lambda: redirect("completion-status")
                 )
 
@@ -1409,8 +1430,6 @@ def habit_name_menu(
             menu_icon_item("Edit", edit_habit)
             separator()
             menu_icon_item("Duplicate", copy_habit)
-            separator()
-            menu_icon_item("Reorder", lambda: redirect("order"))
             separator()
             menu_icon_item("Archive", remove_habit)
 

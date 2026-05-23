@@ -22,7 +22,6 @@ from beaverhabits.app.crud import get_customer_list, get_user_count, get_user_li
 from beaverhabits.app.db import User
 from beaverhabits.configs import settings
 from beaverhabits.core.backup import backup_to_telegram
-from beaverhabits.frontend.components import redirect
 from beaverhabits.logger import logger
 from beaverhabits.storage import get_user_dict_storage, session_storage
 from beaverhabits.storage.dict import DAY_MASK, DictHabitList
@@ -153,10 +152,7 @@ async def login_user(user: User) -> None:
 async def register_user(email: str, password: str = "") -> User:
     logger.info(f"Registering user {email}...")
     user = await user_create(email=email, password=password)
-    # Create a dummy habit list for the new users
-    days = [datetime.date.today() - datetime.timedelta(days=i) for i in range(30)]
-    habit_list = dummy_habit_list(days)
-    await get_or_create_user_habit_list(user, habit_list)
+    await get_or_create_user_habit_list(user, dummy_empty_habit_list())
     logger.info(f"User {email} registered successfully")
     return user
 
@@ -242,7 +238,7 @@ async def reset_password(user: User, password: str) -> None:
     ui.notify("Password reset successfully", color="positive")
 
     await login_user(new_user)
-    redirect(GUI_ROOT_PATH)
+    ui.navigate.to(GUI_ROOT_PATH)
 
 
 @dataclass
@@ -250,6 +246,112 @@ class UserConfigs:
     custom_css: str | None = None
     default_chips: list[str] | None = None
     default_chips_mapping: dict[str, str] | None = None
+
+
+_COMPLETION_WINDOW = 30   # days used for completion rate
+_WEEKLY_WINDOW = 7        # days used for weekly score
+_STREAK_CAP = 30          # streak days that map to 100 % streak score
+
+
+@dataclass
+class VaultWebRankingRow:
+    display_name: str
+    active_habits: int
+    completion_rate: float    # 0–100, last 30 days
+    weekly_score: float       # 0–100, last 7 days
+    avg_streak_days: float    # raw average current streak across active habits
+    is_current_user: bool = False
+
+    @property
+    def total_score(self) -> float:
+        streak_pct = min(self.avg_streak_days / _STREAK_CAP, 1.0) * 100.0
+        return self.completion_rate * 0.5 + self.weekly_score * 0.3 + streak_pct * 0.2
+
+
+def is_vault_web_habits_user(user: User) -> bool:
+    domain = settings.VAULT_WEB_USER_EMAIL_DOMAIN.strip().lower()
+    return user.email.lower().startswith("vault-web-") and user.email.lower().endswith(
+        f"@{domain}"
+    )
+
+
+def _vault_web_fallback_name(email: str) -> str:
+    identity = email.split("@", maxsplit=1)[0].removeprefix("vault-web-")
+    return f"Vault Web #{identity}"
+
+
+def _current_habit_streak(habit: "Habit", today: datetime.date) -> int:
+    ticked = set(habit.ticked_days)
+    if not ticked:
+        return 0
+    earliest = min(ticked)
+    streak = 0
+    day = today
+    while day >= earliest:
+        if day not in ticked:
+            break
+        streak += 1
+        day -= datetime.timedelta(days=1)
+    return streak
+
+
+def _compute_ranking_scores(
+    habits: list["Habit"], today: datetime.date
+) -> tuple[float, float, float]:
+    """Return (completion_rate, weekly_score, avg_streak_days), all per-habit averages."""
+    if not habits:
+        return 0.0, 0.0, 0.0
+
+    n = len(habits)
+    start_30 = today - datetime.timedelta(days=_COMPLETION_WINDOW - 1)
+    start_7 = today - datetime.timedelta(days=_WEEKLY_WINDOW - 1)
+
+    completion_rate = (
+        sum(habit.ticked_count(start_30, today) for habit in habits)
+        / (n * _COMPLETION_WINDOW)
+        * 100.0
+    )
+    weekly_score = (
+        sum(habit.ticked_count(start_7, today) for habit in habits)
+        / (n * _WEEKLY_WINDOW)
+        * 100.0
+    )
+    avg_streak_days = sum(_current_habit_streak(h, today) for h in habits) / n
+
+    return completion_rate, weekly_score, avg_streak_days
+
+
+async def get_vault_web_ranking(current_user: User) -> list[VaultWebRankingRow]:
+    today = datetime.date.today()
+    rows = []
+    for user in await get_user_list():
+        if not is_vault_web_habits_user(user):
+            continue
+
+        try:
+            habit_list = await get_user_habit_list(user)
+        except HTTPException:
+            logger.warning(f"Skipping broken ranking habit list for user {user.email}")
+            continue
+
+        configs = await crud.get_user_configs(user) or {}
+        habits = HabitListBuilder(habit_list).status(HabitStatus.ACTIVE).build()
+        completion_rate, weekly_score, avg_streak_days = _compute_ranking_scores(
+            habits, today
+        )
+        rows.append(
+            VaultWebRankingRow(
+                display_name=configs.get("vault_web_username")
+                or _vault_web_fallback_name(user.email),
+                active_habits=len(habits),
+                completion_rate=completion_rate,
+                weekly_score=weekly_score,
+                avg_streak_days=avg_streak_days,
+                is_current_user=user.id == current_user.id,
+            )
+        )
+
+    return sorted(rows, key=lambda row: (-row.total_score, row.display_name.lower()))
 
 
 async def get_user_configs(user: User) -> UserConfigs:
@@ -290,7 +392,9 @@ async def update_custom_css(user: User, css: str) -> None:
 
 
 def get_default_chips() -> list[str]:
-    return app.storage.user.get("default_chips", settings.DEFAULT_COMPLETION_STATUS_LIST)
+    return app.storage.user.get(
+        "default_chips", settings.DEFAULT_COMPLETION_STATUS_LIST
+    )
 
 
 def get_default_chips_mapping() -> dict[str, str]:
@@ -334,14 +438,17 @@ async def set_user_cookies(user: User) -> None:
     """Set user-related cookies for cross-app usage via JavaScript."""
     if settings.ENABLE_PLAN is False:
         return
-    
+
     async def set_cookies_task():
         # Set email cookie (add more properties as needed)
-        ui.run_javascript(f'document.cookie = "email={user.email}; path=/; SameSite=Lax";')
+        ui.run_javascript(
+            f'document.cookie = "email={user.email}; path=/; SameSite=Lax";'
+        )
 
         customer = await crud.get_user_identity(user.email)
         is_pro = customer.activated if customer else False
-        ui.run_javascript(f'document.cookie = "is_pro={str(is_pro).lower()}; path=/; SameSite=Lax";')
-    
-    ui.timer(0.1, set_cookies_task, once=True)
+        ui.run_javascript(
+            f'document.cookie = "is_pro={str(is_pro).lower()}; path=/; SameSite=Lax";'
+        )
 
+    ui.timer(0.1, set_cookies_task, once=True)
