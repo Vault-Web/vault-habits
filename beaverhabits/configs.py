@@ -68,6 +68,7 @@ class Settings(BaseSettings):
     VAULT_WEB_JWT_SECRET: str = ""
     VAULT_WEB_USER_EMAIL_DOMAIN: str = "vaultweb.app"
     VAULT_WEB_LOGIN_URL: str = ""
+    VAULT_WEB_HOME_URL: str = ""
     VAULT_WEB_AUTH_ONLY: bool = False
     RESET_PASSWORD_TOKEN_SECRET: str = ""
     RESET_PASSWORD_TOKEN_LIFETIME_SECONDS: int = 60 * 60  # 1 hour

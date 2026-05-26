@@ -37,11 +37,13 @@ http://localhost:9001
 
 Set the Vault Web JWT secret to the same access-token secret used by Vault Web.
 `VAULT_WEB_LOGIN_URL` sends unauthenticated Habits visits back to Vault Web, and
-`VAULT_WEB_AUTH_ONLY` disables BeaverHabits local auth endpoints for this mode.
+`VAULT_WEB_HOME_URL` powers the in-app return button. `VAULT_WEB_AUTH_ONLY`
+disables BeaverHabits local auth endpoints for this mode.
 
 ```sh
 export VAULT_WEB_JWT_SECRET=replace_with_vault_web_jwt_secret
 export VAULT_WEB_LOGIN_URL='http://localhost:4200/login?externalLink=Habits'
+export VAULT_WEB_HOME_URL='http://localhost:4200'
 export VAULT_WEB_AUTH_ONLY=true
 uv run ./start.sh dev
 ```
@@ -68,6 +70,7 @@ For local Vault Web integration, `.env` can provide:
 ```sh
 VAULT_WEB_JWT_SECRET=replace_with_vault_web_jwt_secret
 VAULT_WEB_LOGIN_URL=http://localhost:4200/login?externalLink=Habits
+VAULT_WEB_HOME_URL=http://localhost:4200
 VAULT_WEB_AUTH_ONLY=true
 VAULT_WEB_USER_EMAIL_DOMAIN=vaultweb.app
 

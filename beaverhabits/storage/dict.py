@@ -60,6 +60,14 @@ class DictRecord(CheckedRecord, DictStorage):
     def text(self, value: str) -> None:
         self.data["text"] = value
 
+    @property
+    def duration_minutes(self) -> int:
+        return int(self.data.get("duration_minutes") or 0)
+
+    @duration_minutes.setter
+    def duration_minutes(self, value: int) -> None:
+        self.data["duration_minutes"] = max(int(value or 0), 0)
+
 
 class HabitDataCache:
     def __init__(self, habit: "DictHabit"):
@@ -187,7 +195,11 @@ class DictHabit(Habit[DictRecord], DictStorage):
         return self.cache.ticked_data
 
     async def tick(
-        self, day: datetime.date, done: bool, text: str | None = None
+        self,
+        day: datetime.date,
+        done: bool,
+        text: str | None = None,
+        duration_minutes: int | None = None,
     ) -> CheckedRecord:
         # Find the record in the cache
         record = self.ticked_data.get(day)
@@ -199,6 +211,11 @@ class DictHabit(Habit[DictRecord], DictStorage):
                 new_data["done"] = done
             if text is not None and record.text != text:
                 new_data["text"] = text
+            if (
+                duration_minutes is not None
+                and record.duration_minutes != duration_minutes
+            ):
+                new_data["duration_minutes"] = duration_minutes
             if new_data:
                 record.data.update(new_data)
 
@@ -207,6 +224,8 @@ class DictHabit(Habit[DictRecord], DictStorage):
             data = {"day": day.strftime(DAY_MASK), "done": done}
             if text is not None:
                 data["text"] = text
+            if duration_minutes is not None:
+                data["duration_minutes"] = duration_minutes
             self.data["records"].append(data)
 
         # Update the cache

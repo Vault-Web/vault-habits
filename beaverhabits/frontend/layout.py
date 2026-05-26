@@ -1,4 +1,5 @@
 from contextlib import contextmanager
+from urllib.parse import urlparse
 
 from nicegui import ui
 
@@ -22,6 +23,18 @@ from beaverhabits.storage.meta import (
     page_title,
 )
 from beaverhabits.storage.storage import Habit, HabitList
+
+
+def get_vault_web_home_url() -> str:
+    configured_url = settings.VAULT_WEB_HOME_URL.strip()
+    if configured_url:
+        return configured_url
+
+    parsed_login_url = urlparse(settings.VAULT_WEB_LOGIN_URL.strip())
+    if not parsed_login_url.scheme or not parsed_login_url.netloc:
+        return ""
+
+    return f"{parsed_login_url.scheme}://{parsed_login_url.netloc}"
 
 
 def pwa_headers():
@@ -132,6 +145,13 @@ def menu_component():
         imp = menu_icon_item("Import", lambda: redirect("import"))
         if is_page_demo():
             imp.classes("disabled")
+        vault_web_home_url = get_vault_web_home_url()
+        if vault_web_home_url and not is_page_demo():
+            separator()
+            menu_icon_item(
+                "Back to Vault Web",
+                lambda url=vault_web_home_url: ui.navigate.to(url),
+            )
 
 
 @contextmanager

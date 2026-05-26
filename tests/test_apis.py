@@ -151,7 +151,9 @@ async def test_open_registration(client: TestClient):
     assert response.json()["email"] == email
 
 
-async def test_register_requires_admin_auth_when_enabled(admin_protected_client: TestClient):
+async def test_register_requires_admin_auth_when_enabled(
+    admin_protected_client: TestClient,
+):
     """Test that /auth/register requires admin auth when REQUIRE_ADMIN_FOR_REGISTRATION=True."""
     email = f"newuser_{datetime.now().timestamp()}@test.com"
     data = {"email": email, "password": PASSWORD}
@@ -442,6 +444,25 @@ def test_complete_habit_with_note(auth_headers, sample_habit, client: TestClient
     assert response.status_code == 200
 
 
+def test_complete_habit_with_duration(auth_headers, sample_habit, client: TestClient):
+    today = date.today()
+    date_str = today.strftime("%d-%m-%Y")
+
+    response = client.post(
+        f"/api/v1/habits/{sample_habit['id']}/completions",
+        json={
+            "date_fmt": "%d-%m-%Y",
+            "date": date_str,
+            "done": True,
+            "duration_minutes": 45,
+        },
+        headers=auth_headers,
+    )
+
+    assert response.status_code == 200
+    assert response.json()["duration_minutes"] == 45
+
+
 def test_complete_habit_invalid_date_format(
     auth_headers, sample_habit, client: TestClient
 ):
@@ -643,7 +664,9 @@ async def admin_headers(admin_access_token: str):
     }
 
 
-async def test_admin_can_register_user(admin_headers, admin_protected_client: TestClient):
+async def test_admin_can_register_user(
+    admin_headers, admin_protected_client: TestClient
+):
     """Test that admin can register a new user via /auth/register when admin-protected."""
     new_user_email = f"newuser_{datetime.now().timestamp()}@test.com"
     response = admin_protected_client.post(
@@ -658,7 +681,9 @@ async def test_admin_can_register_user(admin_headers, admin_protected_client: Te
     assert data["is_active"]
 
 
-async def test_admin_register_duplicate_email_fails(admin_headers, admin_protected_client: TestClient):
+async def test_admin_register_duplicate_email_fails(
+    admin_headers, admin_protected_client: TestClient
+):
     """Test that registering a user with existing email fails."""
     email = f"duplicate_{datetime.now().timestamp()}@test.com"
 
@@ -679,7 +704,9 @@ async def test_admin_register_duplicate_email_fails(admin_headers, admin_protect
     assert response2.status_code == 400
 
 
-async def test_non_admin_cannot_register_user(auth_headers, admin_protected_client: TestClient):
+async def test_non_admin_cannot_register_user(
+    auth_headers, admin_protected_client: TestClient
+):
     """Test that non-admin users cannot register new users when admin-only mode is enabled."""
     response = admin_protected_client.post(
         "/auth/register",

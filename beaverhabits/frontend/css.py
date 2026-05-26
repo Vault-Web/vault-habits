@@ -48,6 +48,43 @@ NOTE_CSS = """
 .q-timeline .q-timeline__content {
     white-space: break-spaces;
 }
+
+.vault-note-duration {
+    width: fit-content;
+    margin-bottom: 5px;
+    padding: 3px 7px;
+    border-radius: 999px;
+    background: rgba(103, 150, 207, 0.14);
+    color: rgb(96, 165, 250);
+}
+
+.vault-note-duration-icon {
+    font-size: 1rem;
+}
+
+.vault-note-duration-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+}
+
+.vault-note-actions {
+    gap: 6px;
+    padding-top: 8px;
+}
+
+@media (max-width: 640px) {
+    .vault-note-actions {
+        align-items: stretch;
+    }
+
+    .vault-note-actions .q-space {
+        display: none;
+    }
+
+    .vault-note-actions .q-btn {
+        flex: 1 1 calc(50% - 6px);
+    }
+}
 """
 
 YOUTUBE_CSS = """
@@ -101,10 +138,18 @@ APP_SHELL_CSS = """
 }
 
 .vault-toolbar .nicegui-link {
-  max-width: min(70vw, 760px);
+  max-width: min(64vw, 760px);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.vault-web-return-button {
+  color: rgb(96, 165, 250);
+}
+
+body.desktop .vault-web-return-button:hover {
+  background: rgba(96, 165, 250, 0.12);
 }
 
 .vault-habits-shell .q-card {
@@ -160,7 +205,7 @@ body.desktop .vault-week-drag-handle:hover {
 
 .vault-stats-summary {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
   gap: 8px;
 }
 
@@ -625,7 +670,7 @@ body.desktop .vault-week-drag-handle:hover {
 
   .vault-toolbar .nicegui-link {
     font-size: 1.25rem;
-    max-width: calc(100vw - 152px);
+    max-width: calc(100vw - 196px);
   }
 
   .vault-index-card {

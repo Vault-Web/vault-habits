@@ -1,6 +1,8 @@
 import datetime
 
 from beaverhabits.frontend.stats_page import (
+    average_duration_minutes,
+    duration_minutes_in_window,
     percent_int,
     rolling_window_counts,
     thirty_day_progress_rates,
@@ -74,3 +76,40 @@ def test_30_day_progress_trend_is_zero_without_completions():
 
     assert rates
     assert max(rates) == 0
+
+
+def test_duration_average_uses_only_logged_durations():
+    start = datetime.date(2026, 5, 25)
+    today = datetime.date(2026, 5, 27)
+    habits = DictHabitList(
+        {
+            "habits": [
+                {
+                    "name": "Read",
+                    "records": [
+                        {
+                            "day": start.strftime("%Y-%m-%d"),
+                            "done": True,
+                            "duration_minutes": 30,
+                        },
+                        {
+                            "day": today.strftime("%Y-%m-%d"),
+                            "done": True,
+                            "duration_minutes": 60,
+                        },
+                        {
+                            "day": (today - datetime.timedelta(days=1)).strftime(
+                                "%Y-%m-%d"
+                            ),
+                            "done": True,
+                        },
+                    ],
+                }
+            ]
+        }
+    )
+
+    habit = habits.habits[0]
+
+    assert duration_minutes_in_window(habit, start, today) == [30, 60]
+    assert average_duration_minutes(habit, start, today) == 45

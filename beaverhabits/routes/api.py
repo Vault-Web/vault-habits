@@ -193,6 +193,7 @@ class Tick(BaseModel):
     done: bool
     date: str
     text: str | None = None
+    duration_minutes: int | None = None
     date_fmt: str = "%d-%m-%Y"
 
 
@@ -208,8 +209,12 @@ async def put_habit_completions(
         raise HTTPException(status_code=400, detail="Invalid date format")
 
     habit = await views.get_user_habit(user, habit_id)
-    await habit.tick(day, tick.done, tick.text)
-    return {"day": day.strftime(tick.date_fmt), "done": tick.done}
+    record = await habit.tick(day, tick.done, tick.text, tick.duration_minutes)
+    return {
+        "day": day.strftime(tick.date_fmt),
+        "done": tick.done,
+        "duration_minutes": record.duration_minutes,
+    }
 
 
 def format_json_response(habit: Habit) -> dict:

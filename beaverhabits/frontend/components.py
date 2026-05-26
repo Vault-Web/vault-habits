@@ -17,6 +17,7 @@ from beaverhabits.accessibility import index_total_badge_alternative_text
 from beaverhabits.configs import TagSelectionMode, settings
 from beaverhabits.core.backup import backup_to_telegram
 from beaverhabits.core.completions import CStatus, get_habit_date_completion
+from beaverhabits.core.durations import format_duration, parse_duration_minutes
 from beaverhabits.core.note import update_square_style_context
 from beaverhabits.frontend import icons
 from beaverhabits.frontend.javascript import force_checkbox_blur
@@ -128,17 +129,21 @@ def note_append_tag(note: str, chip: str):
     return f"{note}\n\n{tag}"
 
 
+def note_dialog_date_label(today: datetime.date, day: datetime.date) -> str:
+    if day == today:
+        return "Today"
+    if day == today - datetime.timedelta(days=1):
+        return "Yesterday"
+    if day == today + datetime.timedelta(days=1):
+        return "Tomorrow"
+    return day.strftime("%d %b %Y")
+
+
 async def habit_tick_dialog(habit: Habit, day: datetime.date):
     record = habit.record_by(day)
 
     today = await utils.get_user_today_date()
-
-    # if one week ago or earlier, show date label
-    if (day + datetime.timedelta(days=10)) > today:
-        start = min(habit.ticked_days, default=day)
-        label = utils.format_date_difference(start, day)
-    else:
-        label = f"{(today - day).days} days ago"
+    label = note_dialog_date_label(today, day)
 
     with ui.dialog() as dialog, ui.card().props("flat") as card:
         dialog.props('backdrop-filter="blur(4px)"')
@@ -156,28 +161,37 @@ async def habit_tick_dialog(habit: Habit, day: datetime.date):
             t.classes("w-full")
             t.style("font-size: 14px;")
 
-            with ui.row():
-                # default options: yes, no
-                # custom options: skip, mark, star, #hex_color, ...
-                # Fall back to user's default chips if habit has no custom chips
-                chips = habit.chips
-                if not chips:
-                    chips = views.get_default_chips()
-                for chip in chips:
-                    display = value = chip
-                    if ":" in chip:
-                        display, value = chip.split(":", 1)
+            duration = ui.number(
+                label="Time spent",
+                value=record.duration_minutes if record else None,
+                min=0,
+                step=5,
+                precision=0,
+            )
+            duration.props("dense outlined suffix=min")
+            duration.classes("w-full")
 
-                    ui.button(
-                        display, on_click=lambda c=value: dialog.submit((c, t.value))
-                    ).props("flat")
+            with ui.row().classes("vault-note-actions items-center w-full"):
+                ui.space()
+                ui.button("Cancel", on_click=dialog.close).props("flat")
+                ui.button(
+                    "Save",
+                    on_click=lambda: dialog.submit(
+                        ("__save__", t.value, duration.value)
+                    ),
+                ).props("unelevated color=primary")
 
     # Realtime saving
     async def t_value_change(e: events.ValueChangeEventArguments):
         if record:
             if abs(len(e.value) - len(record.text)) < 24:
                 return
-        await habit.tick(day, record.done if record else False, e.value)
+        await habit.tick(
+            day,
+            record.done if record else False,
+            e.value,
+            parse_duration_minutes(duration.value),
+        )
 
     t.on_value_change(t_value_change)
 
@@ -201,9 +215,15 @@ async def note_tick(
     if result is None:
         return
 
-    chip, text = result
-    yes = False if chip.strip().lower() == "no" else True
+    chip, text, duration_value = result
+    chip_value = chip.strip().lower()
+    if chip_value == "__save__":
+        existing = habit.record_by(day)
+        yes = existing.done if existing else False
+    else:
+        yes = False if chip_value == "no" else True
     note = text
+    duration_minutes = parse_duration_minutes(duration_value)
 
     # Apply default chips mapping (e.g. "skip" -> "#amber #skip")
     chips_mapping = views.get_default_chips_mapping()
@@ -214,10 +234,10 @@ async def note_tick(
             tag_clean = tag.lstrip("#").strip()
             if tag_clean:
                 note = note_append_tag(note, tag_clean)
-    elif chip.strip().lower() not in ("yes", "no"):
+    elif chip_value not in ("__save__", "yes", "no"):
         note = note_append_tag(text, chip)
 
-    record = await habit.tick(day, yes, note)
+    record = await habit.tick(day, yes, note, duration_minutes)
     logger.info(f"Habit ticked: {day}, {chip} -> {yes}, note: {text} -> {note}")
 
     return record.done
@@ -930,7 +950,7 @@ async def on_dblclick(habit, day):
 
 @ui.refreshable
 def habit_notes(habit: Habit, limit: int = 10):
-    notes = [x for x in habit.records if x.text]
+    notes = [x for x in habit.records if x.text or x.duration_minutes]
     notes.sort(key=lambda x: x.day, reverse=True)
 
     with ui.timeline(side="right").classes("w-full pt-5 px-3 whitespace-pre-line"):
@@ -943,8 +963,13 @@ def habit_notes(habit: Habit, limit: int = 10):
                 color=color,
             ) as entry:
                 with ui.column().classes("gap-0"):
+                    if duration := format_duration(record.duration_minutes):
+                        with ui.row().classes("vault-note-duration items-center gap-1"):
+                            ui.icon("sym_o_timer").classes("vault-note-duration-icon")
+                            ui.label(duration).classes("vault-note-duration-label")
                     try:
-                        ui.html(text, sanitize=False)
+                        if text:
+                            ui.html(text, sanitize=False)
                     except Exception as e:
                         ui.label(f"Error rendering note: {e}").classes("text-red-500")
 

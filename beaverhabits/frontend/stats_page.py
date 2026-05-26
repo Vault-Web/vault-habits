@@ -4,6 +4,7 @@ import datetime
 from nicegui import ui
 
 from beaverhabits.configs import settings
+from beaverhabits.core.durations import format_duration
 from beaverhabits.frontend.components import redirect
 from beaverhabits.frontend.components import link
 from beaverhabits.frontend.layout import layout
@@ -118,6 +119,25 @@ def rolling_window_counts(
     completions = habit.ticked_count(tracked_start, today) if tracked_days else 0
     missed = max(tracked_days - completions, 0)
     return completions, missed, tracked_days
+
+
+def duration_minutes_in_window(
+    habit: Habit, start: datetime.date, end: datetime.date
+) -> list[int]:
+    return [
+        record.duration_minutes
+        for record in habit.records
+        if start <= record.day <= end and record.duration_minutes > 0
+    ]
+
+
+def average_duration_minutes(
+    habit: Habit, start: datetime.date, end: datetime.date
+) -> int:
+    durations = duration_minutes_in_window(habit, start, end)
+    if not durations:
+        return 0
+    return round(sum(durations) / len(durations))
 
 
 def window_label(tracked_days: int) -> str:
@@ -327,9 +347,15 @@ def _render_contribution_heatmap(
                             f"vault-contribution-cell is-{level}"
                         )
                         state = "completed" if is_done else "not completed"
-                        cell.props(f'aria-label="{day.strftime("%d %b %Y")}: {state}"')
+                        duration = (
+                            format_duration(record.duration_minutes) if record else ""
+                        )
+                        label = f"{day.strftime('%d %b %Y')}: {state}"
+                        if duration:
+                            label = f"{label}, {duration}"
+                        cell.props(f'aria-label="{label}"')
                         with cell:
-                            ui.tooltip(f"{day.strftime('%d %b %Y')}: {state}")
+                            ui.tooltip(label)
 
                     ui.label(weekday[:3]).classes("vault-contribution-weekday")
 
@@ -348,6 +374,10 @@ def progress_card(habit: Habit, registered_on: datetime.date, today: datetime.da
     recent_completions, recent_missed, tracked_days = rolling_window_counts(
         habit, registered_on, today, 30
     )
+    recent_start = max(today - datetime.timedelta(days=29), registered_on)
+    recent_duration_minutes = duration_minutes_in_window(habit, recent_start, today)
+    recent_duration_total = sum(recent_duration_minutes)
+    recent_duration_average = average_duration_minutes(habit, recent_start, today)
     recent_label = window_label(tracked_days)
     streak = current_streak(habit, registered_on, today)
     years = heatmap_years(registered_on, today)
@@ -387,6 +417,11 @@ def progress_card(habit: Habit, registered_on: datetime.date, today: datetime.da
                 habit_metric_tile(
                     f"{recent_completions}/{tracked_days}", recent_label.lower()
                 )
+                habit_metric_tile(
+                    format_duration(recent_duration_average) or "-",
+                    "avg time",
+                    "sym_o_timer",
+                )
 
         with ui.element("section").classes("vault-habit-insights"):
             with ui.element("div").classes("vault-habit-donut-panel"):
@@ -412,7 +447,8 @@ def progress_card(habit: Habit, registered_on: datetime.date, today: datetime.da
                 else:
                     empty_progress_state()
                 ui.label(
-                    f"{recent_label}: {recent_completions} completed, {recent_missed} missed."
+                    f"{recent_label}: {recent_completions} completed, {recent_missed} missed"
+                    f"{', ' + format_duration(recent_duration_total) + ' logged' if recent_duration_total else ''}."
                 ).classes("vault-stats-helper")
 
         with ui.element("section").classes("vault-stats-years"):
@@ -432,6 +468,14 @@ def stats_summary(
     perfect_count = perfect_days(active_habits, registered_on, today)
     top_habit = best_habit(active_habits, registered_on, today)
     weeks = max((today - registered_on).days // 7 + 1, 1)
+    all_durations = [
+        duration
+        for habit in active_habits
+        for duration in duration_minutes_in_window(habit, registered_on, today)
+    ]
+    avg_duration = (
+        round(sum(all_durations) / len(all_durations)) if all_durations else 0
+    )
 
     with ui.element("section").classes("vault-stats-overview"):
         with ui.row().classes("vault-stats-overview-head items-end"):
@@ -449,6 +493,7 @@ def stats_summary(
                 (f"{today_done}/{len(active_habits)}", "Today", "success"),
                 (format_percent(week_done, week_possible), "This week", "primary"),
                 (format_percent(completions, possible), "All-time rate", "primary"),
+                (format_duration(avg_duration) or "-", "Avg session", "neutral"),
                 (perfect_count, "Perfect days", "warm"),
                 (top_habit.name if top_habit else "-", "Best habit", "success"),
             ):
