@@ -499,20 +499,40 @@ body.desktop .vault-week-drag-handle:hover {
   gap: 8px;
 }
 
+.vault-ranking-intro {
+  color: rgba(128, 128, 128, 0.92);
+  font-size: 0.86rem;
+}
+
 .vault-ranking-row {
   width: 100%;
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  padding: 11px 14px;
+  padding: 12px 14px;
   border: 1px solid rgba(128, 128, 128, 0.14);
   border-radius: 8px;
+  background: rgba(128, 128, 128, 0.035);
+  transition: border-color 120ms ease, background-color 120ms ease;
 }
 
 .vault-ranking-row.is-current {
   border-color: rgba(25, 118, 210, 0.5);
   background: rgba(25, 118, 210, 0.08);
+}
+
+.vault-ranking-row.is-top-1 {
+  border-color: rgba(245, 158, 11, 0.42);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(128, 128, 128, 0.03));
+}
+
+.vault-ranking-row.is-top-2 {
+  border-color: rgba(103, 150, 207, 0.36);
+}
+
+.vault-ranking-row.is-top-3 {
+  border-color: rgba(35, 134, 54, 0.32);
 }
 
 .vault-ranking-rank {
@@ -525,10 +545,40 @@ body.desktop .vault-week-drag-handle:hover {
   font-weight: 700;
 }
 
+.vault-ranking-row.is-top-1 .vault-ranking-rank {
+  background: rgba(245, 158, 11, 0.18);
+  color: rgb(245, 158, 11);
+}
+
+.vault-ranking-main {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.vault-ranking-title-row {
+  min-width: 0;
+}
+
 .vault-ranking-name {
   min-width: 0;
   overflow-wrap: anywhere;
   font-weight: 600;
+}
+
+.vault-ranking-progress {
+  width: 100%;
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(128, 128, 128, 0.13);
+}
+
+.vault-ranking-progress-fill {
+  height: 100%;
+  min-width: 2px;
+  border-radius: inherit;
+  background: linear-gradient(90deg, rgb(35, 134, 54), rgb(103, 150, 207));
 }
 
 .vault-ranking-subtext {
@@ -638,12 +688,28 @@ body.desktop .vault-week-drag-handle:hover {
   }
 
   .vault-ranking-row {
-    grid-template-columns: 36px minmax(0, 1fr);
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 8px;
+    padding: 11px 10px;
   }
 
-  .vault-ranking-score {
+  .vault-ranking-rank {
+    width: 28px;
+    height: 28px;
+  }
+
+  .vault-ranking-scores {
     grid-column: 2;
-    text-align: left;
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px;
+  }
+
+  .vault-ranking-score-item {
+    min-width: 0;
+    align-items: start;
+    padding-top: 2px;
   }
 }
 """

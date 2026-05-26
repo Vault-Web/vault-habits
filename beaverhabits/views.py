@@ -248,24 +248,25 @@ class UserConfigs:
     default_chips_mapping: dict[str, str] | None = None
 
 
-_COMPLETION_WINDOW = 30   # days used for completion rate
-_WEEKLY_WINDOW = 7        # days used for weekly score
-_STREAK_CAP = 30          # streak days that map to 100 % streak score
+_COMPLETION_WINDOW = 30  # days used for background context
+_STREAK_CAP = 7  # streak days that map to 100 % weekly momentum bonus
 
 
 @dataclass
 class VaultWebRankingRow:
     display_name: str
     active_habits: int
-    completion_rate: float    # 0–100, last 30 days
-    weekly_score: float       # 0–100, last 7 days
-    avg_streak_days: float    # raw average current streak across active habits
+    completion_rate: float  # 0–100, last 30 days, context only
+    weekly_score: float  # 0–100, current week
+    avg_streak_days: float  # raw average current streak across active habits
+    week_done: int = 0
+    week_possible: int = 0
     is_current_user: bool = False
 
     @property
     def total_score(self) -> float:
         streak_pct = min(self.avg_streak_days / _STREAK_CAP, 1.0) * 100.0
-        return self.completion_rate * 0.5 + self.weekly_score * 0.3 + streak_pct * 0.2
+        return self.weekly_score * 0.85 + streak_pct * 0.15
 
 
 def is_vault_web_habits_user(user: User) -> bool:
@@ -295,30 +296,45 @@ def _current_habit_streak(habit: "Habit", today: datetime.date) -> int:
     return streak
 
 
+def _week_start_of(date: datetime.date) -> datetime.date:
+    days_offset = (date.weekday() - settings.FIRST_DAY_OF_WEEK) % 7
+    return date - datetime.timedelta(days=days_offset)
+
+
+def _date_from_datetime(value: datetime.datetime | None) -> datetime.date | None:
+    return value.date() if value else None
+
+
 def _compute_ranking_scores(
-    habits: list["Habit"], today: datetime.date
-) -> tuple[float, float, float]:
-    """Return (completion_rate, weekly_score, avg_streak_days), all per-habit averages."""
+    habits: list["Habit"],
+    today: datetime.date,
+    registered_on: datetime.date | None = None,
+) -> tuple[float, float, float, int, int]:
+    """Return weekly ranking scores and context metrics."""
     if not habits:
-        return 0.0, 0.0, 0.0
+        return 0.0, 0.0, 0.0, 0, 0
 
     n = len(habits)
     start_30 = today - datetime.timedelta(days=_COMPLETION_WINDOW - 1)
-    start_7 = today - datetime.timedelta(days=_WEEKLY_WINDOW - 1)
+    week_start = _week_start_of(today)
+    if registered_on:
+        week_start = max(week_start, registered_on)
+        start_30 = max(start_30, registered_on)
+
+    completion_days = max((today - start_30).days + 1, 1)
+    week_days = max((today - week_start).days + 1, 1)
+    week_possible = n * week_days
+    week_done = sum(habit.ticked_count(week_start, today) for habit in habits)
 
     completion_rate = (
         sum(habit.ticked_count(start_30, today) for habit in habits)
-        / (n * _COMPLETION_WINDOW)
+        / (n * completion_days)
         * 100.0
     )
-    weekly_score = (
-        sum(habit.ticked_count(start_7, today) for habit in habits)
-        / (n * _WEEKLY_WINDOW)
-        * 100.0
-    )
+    weekly_score = week_done / week_possible * 100.0 if week_possible else 0.0
     avg_streak_days = sum(_current_habit_streak(h, today) for h in habits) / n
 
-    return completion_rate, weekly_score, avg_streak_days
+    return completion_rate, weekly_score, avg_streak_days, week_done, week_possible
 
 
 async def get_vault_web_ranking(current_user: User) -> list[VaultWebRankingRow]:
@@ -336,8 +352,14 @@ async def get_vault_web_ranking(current_user: User) -> list[VaultWebRankingRow]:
 
         configs = await crud.get_user_configs(user) or {}
         habits = HabitListBuilder(habit_list).status(HabitStatus.ACTIVE).build()
-        completion_rate, weekly_score, avg_streak_days = _compute_ranking_scores(
-            habits, today
+        (
+            completion_rate,
+            weekly_score,
+            avg_streak_days,
+            week_done,
+            week_possible,
+        ) = _compute_ranking_scores(
+            habits, today, registered_on=_date_from_datetime(user.created_at)
         )
         rows.append(
             VaultWebRankingRow(
@@ -347,6 +369,8 @@ async def get_vault_web_ranking(current_user: User) -> list[VaultWebRankingRow]:
                 completion_rate=completion_rate,
                 weekly_score=weekly_score,
                 avg_streak_days=avg_streak_days,
+                week_done=week_done,
+                week_possible=week_possible,
                 is_current_user=user.id == current_user.id,
             )
         )

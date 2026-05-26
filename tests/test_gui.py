@@ -102,6 +102,6 @@ async def test_ranking_page(user) -> None:
         )
 
     await user.open("/")
-    await user.should_see("Vault Web Ranking")
+    await user.should_see("Weekly Ranking")
     await user.should_see("deniz")
-    await user.should_see("85%")
+    await user.should_see("71%")
