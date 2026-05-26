@@ -196,10 +196,47 @@ body.desktop .vault-week-drag-handle:hover {
 
 .vault-stat {
   min-width: 0;
+  position: relative;
   padding: 12px 14px;
   border: 1px solid rgba(128, 128, 128, 0.16);
   border-radius: 8px;
   background: rgba(128, 128, 128, 0.05);
+  overflow: hidden;
+}
+
+.vault-stat::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: rgba(128, 128, 128, 0.24);
+}
+
+.vault-stat.is-success {
+  border-color: rgba(35, 134, 54, 0.32);
+  background: linear-gradient(135deg, rgba(35, 134, 54, 0.12), rgba(35, 134, 54, 0.03));
+}
+
+.vault-stat.is-primary {
+  border-color: rgba(103, 150, 207, 0.36);
+  background: linear-gradient(135deg, rgba(103, 150, 207, 0.13), rgba(103, 150, 207, 0.03));
+}
+
+.vault-stat.is-warm {
+  border-color: rgba(245, 158, 11, 0.36);
+  background: linear-gradient(135deg, rgba(245, 158, 11, 0.14), rgba(245, 158, 11, 0.03));
+}
+
+.vault-stat.is-success::before {
+  background: rgb(35, 134, 54);
+}
+
+.vault-stat.is-primary::before {
+  background: rgb(103, 150, 207);
+}
+
+.vault-stat.is-warm::before {
+  background: rgb(245, 158, 11);
 }
 
 .vault-stat-value {
@@ -252,23 +289,119 @@ body.desktop .vault-week-drag-handle:hover {
   gap: 6px;
 }
 
-.vault-stats-inline-metric {
-  min-width: 64px;
-  padding: 6px 8px;
+.vault-habit-metric-tile {
+  min-width: 86px;
+  min-height: 48px;
+  padding: 7px 9px;
   display: grid;
+  align-content: center;
   justify-items: end;
   border-radius: 8px;
   background: rgba(128, 128, 128, 0.07);
 }
 
-.vault-stats-inline-value {
+.vault-habit-metric-value {
   font-weight: 700;
   line-height: 1.1;
 }
 
-.vault-stats-inline-label {
+.vault-habit-metric-label {
   color: rgba(128, 128, 128, 0.95);
   font-size: 0.76rem;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+.vault-habit-metric-icon {
+  color: rgb(245, 158, 11);
+  font-size: 1.05rem;
+}
+
+.vault-habit-insights {
+  width: 100%;
+  display: grid;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+}
+
+.vault-habit-donut-panel,
+.vault-habit-trend-panel {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.vault-stats-donut {
+  width: 160px;
+  height: 160px;
+  justify-self: center;
+}
+
+.vault-donut-legend {
+  display: grid;
+  gap: 5px;
+}
+
+.vault-donut-legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.vault-donut-legend-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  flex: 0 0 auto;
+}
+
+.vault-donut-legend-dot.is-done {
+  background: rgb(35, 134, 54);
+}
+
+.vault-donut-legend-dot.is-missed {
+  background: rgb(245, 158, 11);
+}
+
+.vault-donut-legend-label {
+  min-width: 0;
+  color: rgba(128, 128, 128, 0.95);
+  font-size: 0.78rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vault-progress-trend-chart {
+  width: 100%;
+  min-width: 260px;
+  height: 150px;
+}
+
+.vault-progress-empty {
+  width: 100%;
+  min-height: 150px;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 4px;
+  border: 1px dashed rgba(128, 128, 128, 0.22);
+  border-radius: 8px;
+  background: rgba(128, 128, 128, 0.035);
+}
+
+.vault-progress-empty-value {
+  font-size: 1.7rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.vault-progress-empty-label {
+  color: rgba(128, 128, 128, 0.92);
+  font-size: 0.84rem;
+  text-align: center;
 }
 
 .vault-stats-history,
@@ -474,9 +607,19 @@ body.desktop .vault-week-drag-handle:hover {
     justify-content: stretch;
   }
 
-  .vault-stats-inline-metric {
+  .vault-habit-metric-tile {
     flex: 1 1 0;
     justify-items: start;
+    min-width: 0;
+  }
+
+  .vault-habit-insights {
+    grid-template-columns: 1fr;
+  }
+
+  .vault-stats-donut {
+    width: 144px;
+    height: 144px;
   }
 
   .vault-contribution-months,

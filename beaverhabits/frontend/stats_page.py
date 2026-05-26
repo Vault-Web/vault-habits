@@ -11,8 +11,10 @@ from beaverhabits.storage.meta import get_habit_heatmap_path
 from beaverhabits.storage.storage import Habit, HabitList, HabitListBuilder, HabitStatus
 
 _PRIMARY_SOLID = "rgba(103,150,207,1)"
-_PRIMARY_FADE = "rgba(103,150,207,0.22)"
+_PRIMARY_FADE = "rgba(103,150,207,0.18)"
 _PRIMARY_ZERO = "rgba(103,150,207,0)"
+_SUCCESS_SOLID = "rgba(35,134,54,1)"
+_WARNING_SOLID = "rgba(245,158,11,1)"
 
 
 def week_start_of(date: datetime.date) -> datetime.date:
@@ -39,6 +41,12 @@ def format_percent(value: int, total: int) -> str:
     if total <= 0:
         return "0%"
     return f"{round(value / total * 100)}%"
+
+
+def percent_int(value: int, total: int) -> int:
+    if total <= 0:
+        return 0
+    return round(value / total * 100)
 
 
 def current_streak(
@@ -101,98 +109,147 @@ def week_completion(
     return done, possible
 
 
-def weekly_history(habit: Habit, registered_on: datetime.date, today: datetime.date):
-    week_starts: list[datetime.date] = []
-    w = week_start_of(registered_on)
-    while w <= today:
-        week_starts.append(w)
-        w += datetime.timedelta(weeks=1)
+def rolling_window_counts(
+    habit: Habit, registered_on: datetime.date, today: datetime.date, days: int
+) -> tuple[int, int, int]:
+    start = today - datetime.timedelta(days=days - 1)
+    tracked_start = max(start, registered_on)
+    tracked_days = max((today - tracked_start).days + 1, 0)
+    completions = habit.ticked_count(tracked_start, today) if tracked_days else 0
+    missed = max(tracked_days - completions, 0)
+    return completions, missed, tracked_days
 
+
+def window_label(tracked_days: int) -> str:
+    if tracked_days == 1:
+        return "Last 1 day"
+    return "Last 30 days" if tracked_days >= 30 else f"Last {tracked_days} days"
+
+
+def completion_donut(completions: int, missed: int, tracked_days: int):
+    total = max(tracked_days, 0)
+    rate = percent_int(completions, total)
+    chart = ui.echart(
+        {
+            "tooltip": {"trigger": "item", "formatter": "{b}: {c} days"},
+            "legend": {"show": False},
+            "series": [
+                {
+                    "type": "pie",
+                    "radius": ["68%", "88%"],
+                    "center": ["50%", "50%"],
+                    "avoidLabelOverlap": True,
+                    "label": {
+                        "show": True,
+                        "position": "center",
+                        "formatter": f"{rate}%",
+                        "fontSize": 20,
+                        "fontWeight": 700,
+                    },
+                    "labelLine": {"show": False},
+                    "data": [
+                        {
+                            "value": completions,
+                            "name": "Completed",
+                            "itemStyle": {"color": _SUCCESS_SOLID},
+                        },
+                        {
+                            "value": missed,
+                            "name": "Missed",
+                            "itemStyle": {"color": _WARNING_SOLID},
+                        },
+                    ],
+                    "animation": False,
+                }
+            ],
+        }
+    )
+    chart.classes("vault-stats-donut")
+
+
+def thirty_day_progress_rates(
+    habit: Habit, registered_on: datetime.date, today: datetime.date
+) -> tuple[list[str], list[int]]:
+    window_start = today - datetime.timedelta(days=29)
+    chart_start = max(registered_on, window_start)
+    tracked_days = max((today - chart_start).days + 1, 1)
     labels: list[str] = []
     rates: list[int] = []
-    prev_month = None
-    for ws in week_starts:
-        we = min(today, ws + datetime.timedelta(days=6))
-        start_day = max(ws, registered_on)
-        available = max((we - start_day).days + 1, 1)
-        done = habit.ticked_count(start_day, we)
-        rates.append(round(done / available * 100))
+    for day in iter_days(chart_start, today):
+        rates.append(percent_int(habit.ticked_count(chart_start, day), tracked_days))
+        labels.append(day.strftime("%d %b"))
+    return labels, rates
 
-        if ws.month != prev_month:
-            labels.append(
-                ws.strftime("%b") if ws.year == today.year else ws.strftime("%b '%y")
-            )
-            prev_month = ws.month
-        else:
-            labels.append("")
 
-    with ui.element("div").classes("vault-scroll-surface"):
-        chart = ui.echart(
-            {
-                "tooltip": {
-                    "trigger": "axis",
-                },
-                "xAxis": {
-                    "type": "category",
-                    "data": labels,
-                    "boundaryGap": False,
-                    "axisLabel": {"interval": 0},
-                },
-                "yAxis": {
-                    "type": "value",
-                    "min": 0,
-                    "max": 100,
-                    "position": "right",
-                    "axisLabel": {"formatter": "{value}%"},
-                },
-                "series": [
-                    {
-                        "type": "line",
-                        "name": "completed",
-                        "data": rates,
-                        "smooth": 0.3,
-                        "showSymbol": len(week_starts) <= 12,
-                        "symbolSize": 4,
-                        "itemStyle": {"color": _PRIMARY_SOLID},
-                        "lineStyle": {"color": _PRIMARY_SOLID, "width": 2},
-                        "areaStyle": {
-                            "color": {
-                                "type": "linear",
-                                "x": 0,
-                                "y": 0,
-                                "x2": 0,
-                                "y2": 1,
-                                "colorStops": [
-                                    {"offset": 0, "color": _PRIMARY_FADE},
-                                    {"offset": 1, "color": _PRIMARY_ZERO},
-                                ],
-                            }
-                        },
-                        "animation": False,
-                        "markLine": {
-                            "silent": True,
-                            "symbol": "none",
-                            "data": [{"type": "average"}],
-                            "label": {
-                                "show": True,
-                                "formatter": "Ø {c}%",
-                                "position": "insideEndTop",
-                                "fontSize": 10,
-                                "color": "rgba(128,128,128,0.8)",
-                            },
-                            "lineStyle": {
-                                "color": "rgba(128,128,128,0.4)",
-                                "type": "dashed",
-                                "width": 1,
-                            },
-                        },
+def progress_trend(habit: Habit, registered_on: datetime.date, today: datetime.date):
+    labels, rates = thirty_day_progress_rates(habit, registered_on, today)
+    if not rates or max(rates) == 0:
+        empty_progress_state()
+        return
+
+    chart = ui.echart(
+        {
+            "tooltip": {"trigger": "axis"},
+            "xAxis": {
+                "type": "category",
+                "data": labels,
+                "boundaryGap": False,
+                "axisLabel": {"show": len(labels) <= 8, "fontSize": 10},
+                "axisTick": {"show": False},
+            },
+            "yAxis": {
+                "type": "value",
+                "min": 0,
+                "max": 100,
+                "position": "right",
+                "axisLabel": {"formatter": "{value}%", "fontSize": 10},
+                "splitLine": {"lineStyle": {"color": "rgba(128,128,128,0.16)"}},
+            },
+            "series": [
+                {
+                    "type": "line",
+                    "name": "30-day progress",
+                    "data": rates,
+                    "smooth": 0.25,
+                    "showSymbol": len(rates) <= 8,
+                    "symbolSize": 5,
+                    "itemStyle": {"color": _PRIMARY_SOLID},
+                    "lineStyle": {"color": _PRIMARY_SOLID, "width": 2},
+                    "areaStyle": {
+                        "color": {
+                            "type": "linear",
+                            "x": 0,
+                            "y": 0,
+                            "x2": 0,
+                            "y2": 1,
+                            "colorStops": [
+                                {"offset": 0, "color": _PRIMARY_FADE},
+                                {"offset": 1, "color": _PRIMARY_ZERO},
+                            ],
+                        }
                     },
-                ],
-                "grid": {"top": 20, "bottom": 24, "left": 8, "right": 44},
-            }
-        )
-        chart.classes("vault-stats-month-chart")
-        chart.style(f"min-width: {max(320, len(week_starts) * 14)}px")
+                    "animation": False,
+                }
+            ],
+            "grid": {"top": 12, "bottom": 22, "left": 8, "right": 36},
+        }
+    )
+    chart.classes("vault-progress-trend-chart")
+
+
+def empty_progress_state():
+    with ui.element("div").classes("vault-progress-empty"):
+        ui.label("0%").classes("vault-progress-empty-value")
+        ui.label("No completed days yet.").classes("vault-progress-empty-label")
+
+
+def habit_metric_tile(value: str, label: str, icon: str | None = None):
+    with ui.element("div").classes("vault-habit-metric-tile"):
+        with ui.row().classes("items-center gap-1 no-wrap"):
+            if icon:
+                ui.icon(icon).classes("vault-habit-metric-icon")
+            ui.label(value).classes("vault-habit-metric-value")
+        ui.label(label).classes("vault-habit-metric-label")
 
 
 def heatmap_level(done: bool, day: datetime.date, today: datetime.date) -> str:
@@ -284,20 +341,14 @@ def _render_contribution_heatmap(
     )
 
 
-def completion_rate(
-    completions: int, registered_on: datetime.date, today: datetime.date
-) -> str:
-    days = max((today - registered_on).days + 1, 1)
-    return format_percent(completions, days)
-
-
 def progress_card(habit: Habit, registered_on: datetime.date, today: datetime.date):
     target = get_habit_heatmap_path(habit)
     completions = habit.ticked_count(registered_on, today)
     total_days = max((today - registered_on).days + 1, 1)
-    recent_start = max(registered_on, today - datetime.timedelta(days=29))
-    recent_days = max((today - recent_start).days + 1, 1)
-    recent_completions = habit.ticked_count(recent_start, today)
+    recent_completions, recent_missed, tracked_days = rolling_window_counts(
+        habit, registered_on, today, 30
+    )
+    recent_label = window_label(tracked_days)
     streak = current_streak(habit, registered_on, today)
     years = heatmap_years(registered_on, today)
     selected_year = [today.year]
@@ -329,23 +380,40 @@ def progress_card(habit: Habit, registered_on: datetime.date, today: datetime.da
             link(habit.name, target).classes("vault-stats-habit-name")
             ui.space()
             with ui.row().classes("vault-stats-inline-metrics no-wrap"):
-                with ui.element("div").classes("vault-stats-inline-metric"):
-                    ui.label(f"{completions}/{total_days}").classes(
-                        "vault-stats-inline-value"
-                    )
-                    ui.label("all time").classes("vault-stats-inline-label")
-                with ui.element("div").classes("vault-stats-inline-metric"):
-                    ui.label(f"{streak}d").classes("vault-stats-inline-value")
-                    ui.label("streak").classes("vault-stats-inline-label")
-                with ui.element("div").classes("vault-stats-inline-metric"):
-                    ui.label(format_percent(recent_completions, recent_days)).classes(
-                        "vault-stats-inline-value"
-                    )
-                    ui.label("30 days").classes("vault-stats-inline-label")
+                habit_metric_tile(
+                    f"{streak}d", "current streak", "local_fire_department"
+                )
+                habit_metric_tile(f"{completions}/{total_days}", "all time")
+                habit_metric_tile(
+                    f"{recent_completions}/{tracked_days}", recent_label.lower()
+                )
 
-        with ui.element("section").classes("vault-stats-history"):
-            ui.label("Weekly completion").classes("vault-stats-section-label")
-            weekly_history(habit, registered_on, today)
+        with ui.element("section").classes("vault-habit-insights"):
+            with ui.element("div").classes("vault-habit-donut-panel"):
+                ui.label(recent_label).classes("vault-stats-section-label")
+                completion_donut(recent_completions, recent_missed, tracked_days)
+                with ui.element("div").classes("vault-donut-legend"):
+                    for color_class, value, label in (
+                        ("is-done", recent_completions, "completed"),
+                        ("is-missed", recent_missed, "missed"),
+                    ):
+                        with ui.element("div").classes("vault-donut-legend-item"):
+                            ui.element("span").classes(
+                                f"vault-donut-legend-dot {color_class}"
+                            )
+                            ui.label(f"{value} {label}").classes(
+                                "vault-donut-legend-label"
+                            )
+
+            with ui.element("div").classes("vault-habit-trend-panel"):
+                ui.label("Progress trend").classes("vault-stats-section-label")
+                if recent_completions:
+                    progress_trend(habit, registered_on, today)
+                else:
+                    empty_progress_state()
+                ui.label(
+                    f"{recent_label}: {recent_completions} completed, {recent_missed} missed."
+                ).classes("vault-stats-helper")
 
         with ui.element("section").classes("vault-stats-years"):
             year_section()
@@ -376,15 +444,15 @@ def stats_summary(
             ui.label(f"{weeks} weeks tracked").classes("vault-stats-pill")
 
         with ui.row().classes("vault-stats-summary w-full"):
-            for value, label in (
-                (len(active_habits), "Active habits"),
-                (f"{today_done}/{len(active_habits)}", "Today"),
-                (format_percent(week_done, week_possible), "This week"),
-                (format_percent(completions, possible), "All-time rate"),
-                (perfect_count, "Perfect days"),
-                (top_habit.name if top_habit else "-", "Best habit"),
+            for value, label, tone in (
+                (len(active_habits), "Active habits", "neutral"),
+                (f"{today_done}/{len(active_habits)}", "Today", "success"),
+                (format_percent(week_done, week_possible), "This week", "primary"),
+                (format_percent(completions, possible), "All-time rate", "primary"),
+                (perfect_count, "Perfect days", "warm"),
+                (top_habit.name if top_habit else "-", "Best habit", "success"),
             ):
-                with ui.element("div").classes("vault-stat"):
+                with ui.element("div").classes(f"vault-stat is-{tone}"):
                     ui.label(str(value)).classes("vault-stat-value")
                     ui.label(label).classes("vault-stat-label")
 

@@ -73,7 +73,7 @@ async def test_habit_stats_page(user) -> None:
 
     await user.open("/")
     await user.should_see("Order pizz")
-    await user.should_see("Weekly completion")
+    await user.should_see("Last 7 days")
     await user.should_see("Today")
     await user.should_see("Year")
 

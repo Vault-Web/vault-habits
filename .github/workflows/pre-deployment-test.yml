@@ -18,4 +18,9 @@ jobs:
       - name: Install dependencies
         run: uv sync --group fly
       - name: Test with python
-        run: DATABASE_URL="sqlite+aiosqlite:///:memory:" HABITS_STORAGE="USER_DISK" uv run pytest
+        env:
+          DATABASE_URL: sqlite+aiosqlite:///:memory:
+          HABITS_STORAGE: USER_DISK
+          VAULT_WEB_AUTH_ONLY: "false"
+          DEBUG: "false"
+        run: uv run pytest
