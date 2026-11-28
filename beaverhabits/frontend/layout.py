@@ -131,7 +131,7 @@ def custom_headers():
 
 @ui.refreshable
 def menu_component():
-    """Dropdown menu for the top-right corner of the page."""
+    """Dropdown menu for switching between Habits pages and Vault Web."""
     with ui.menu().props('role="menu" transition-duration="50"'):
         menu_icon_item("Habits", lambda: redirect(""))
         separator()
@@ -168,6 +168,11 @@ def layout(
 
         # Layout wrapper
         with ui.row().classes("vault-toolbar w-full gap-x-1 no-wrap"):
+            with menu_icon_button("sym_o_menu", tooltip="Navigation menu").props(
+                'aria-haspopup="menu"'
+            ):
+                menu_component()
+
             title, target = title or page_title(), get_root_path()
             menu_header(title, target=target)
 
@@ -188,7 +193,4 @@ def layout(
             elif habit_list and "add" in page_path():
                 with menu_icon_button("sym_o_swap_vert", tooltip="Sort"):
                     sort_menu(habit_list)
-            with menu_icon_button("sym_o_menu"):
-                menu_component()
-
         yield
